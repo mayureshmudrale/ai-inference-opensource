@@ -1,0 +1,18 @@
+vllm-inference ({{ .Chart.Name }}) has been deployed.
+
+Model:        {{ .Values.model.name }} (revision: {{ .Values.model.revision }})
+Service:      {{ include "vllm-inference.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+Autoscaling:  {{ if .Values.autoscaling.enabled }}KEDA enabled ({{ .Values.autoscaling.minReplicaCount }}-{{ .Values.autoscaling.maxReplicaCount }} replicas){{ else }}disabled (static replicaCount: {{ .Values.replicaCount }}){{ end }}
+
+Model download can take several minutes on first start — check progress with:
+
+  kubectl rollout status deployment/{{ include "vllm-inference.fullname" . }} -n {{ .Release.Namespace }}
+  kubectl logs -f deployment/{{ include "vllm-inference.fullname" . }} -n {{ .Release.Namespace }}
+
+Port-forward to try the OpenAI-compatible API locally:
+
+  kubectl port-forward svc/{{ include "vllm-inference.fullname" . }} 8000:{{ .Values.service.port }} -n {{ .Release.Namespace }}
+
+  curl http://localhost:8000/v1/completions \
+    -H "Content-Type: application/json" \
+    -d '{"model": "{{ .Values.model.name }}", "prompt": "San Francisco is a", "max_tokens": 32}'

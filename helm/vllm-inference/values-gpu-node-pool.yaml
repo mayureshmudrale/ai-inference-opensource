@@ -1,0 +1,29 @@
+## Example override demonstrating GPU-aware scheduling on a dedicated node
+## pool. Values here are illustrative placeholders — adjust the selector
+## key/value and taint to match your actual cluster/cloud provider.
+##
+##   helm install gollie ./helm/vllm-inference -f values-gpu-node-pool.yaml
+##
+## Common real-world equivalents:
+##   GKE:  nodeSelector: {cloud.google.com/gke-accelerator: nvidia-l4}
+##   EKS:  nodeSelector: {k8s.amazonaws.com/accelerator: nvidia-tesla-a10g}
+##   Self-managed: nodeSelector: {nvidia.com/gpu.product: NVIDIA-L4}
+
+nodeSelector:
+  gpu-node-pool: "true"
+
+tolerations:
+  - key: "nvidia.com/gpu"
+    operator: "Equal"
+    value: "present"
+    effect: "NoSchedule"
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: nvidia.com/gpu.present
+              operator: In
+              values:
+                - "true"

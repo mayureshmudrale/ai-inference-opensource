@@ -1,0 +1,112 @@
+## Default values for the vllm-inference chart.
+## This file deploys HiTZ/GoLLIE-7B (a 7B, open-weight, CodeLlama-based model)
+## by default, but every model-specific setting lives under `model:` so any
+## model vLLM supports can be swapped in without touching templates.
+
+replicaCount: 1
+
+image:
+  repository: vllm/vllm-openai
+  # "latest" keeps this demo simple to reproduce today; for anything beyond
+  # a demo, pin an exact version tag from
+  # https://hub.docker.com/r/vllm/vllm-openai/tags for reproducible builds.
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+model:
+  # Any HuggingFace Hub repo id that vLLM can load.
+  name: HiTZ/GoLLIE-7B
+  # Pin a specific revision/commit for reproducibility; "main" if unset.
+  revision: main
+  dtype: float16
+  maxModelLen: 4096
+  gpuMemoryUtilization: 0.90
+  # Extra raw CLI args appended to `vllm serve`, e.g. ["--quantization", "awq"]
+  extraArgs: []
+
+server:
+  port: 8000
+  # Container port name must match servicemonitor/service references.
+  containerPortName: http
+
+replicaCountAutoscalingNote: >-
+  `replicaCount` is the static count used when autoscaling.enabled is false.
+  When KEDA is enabled, it manages replica count and this value is only the
+  floor KEDA restores the Deployment to if the ScaledObject is removed.
+
+resources:
+  requests:
+    cpu: "4"
+    memory: 16Gi
+    nvidia.com/gpu: "1"
+  limits:
+    cpu: "8"
+    memory: 24Gi
+    nvidia.com/gpu: "1"
+
+## GPU scheduling -----------------------------------------------------------
+## These are intentionally empty by default so the chart renders and lints
+## on a laptop with no GPU nodes. See values-gpu-node-pool.yaml for a
+## realistic override (cloud-specific node selector + taint toleration).
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+## Model weights cache --------------------------------------------------------
+## vLLM downloads weights from the Hub on first start. A PVC avoids
+## re-downloading ~14GB on every pod restart/reschedule.
+modelCache:
+  enabled: true
+  storageClassName: ""
+  size: 30Gi
+  accessMode: ReadWriteOnce
+
+## Gated/private HF models need a token. We never bake a token into values
+## or templates; instead reference a Secret you create out-of-band:
+##   kubectl create secret generic hf-token --from-literal=token=<HF_TOKEN>
+## and set huggingface.tokenSecretName: hf-token
+huggingface:
+  tokenSecretName: ""
+  tokenSecretKey: token
+
+service:
+  type: ClusterIP
+  port: 8000
+
+probes:
+  startup:
+    periodSeconds: 10
+    failureThreshold: 60 # allow up to 10 min for model load
+  liveness:
+    periodSeconds: 30
+    failureThreshold: 3
+  readiness:
+    periodSeconds: 10
+    failureThreshold: 3
+
+## Prometheus Operator ServiceMonitor. Requires the ServiceMonitor CRD
+## (installed by kube-prometheus-stack); disable if not using the Operator.
+serviceMonitor:
+  enabled: true
+  interval: 15s
+  labels: {}
+
+## KEDA autoscaling -----------------------------------------------------------
+autoscaling:
+  enabled: true
+  minReplicaCount: 1
+  maxReplicaCount: 4
+  pollingInterval: 15
+  cooldownPeriod: 120
+  # Prometheus server vLLM metrics will be queried from. Point this at your
+  # in-cluster Prometheus, e.g. a kube-prometheus-stack release.
+  prometheusAddress: http://prometheus-operated.monitoring.svc.cluster.local:9090
+  # Scale out when average in-flight+queued requests per replica exceeds this.
+  # Backed by vllm:num_requests_running + vllm:num_requests_waiting.
+  requestsPerReplicaThreshold: "10"
+
+podAnnotations: {}
+podSecurityContext: {}
+securityContext: {}
+
+extraEnv: []

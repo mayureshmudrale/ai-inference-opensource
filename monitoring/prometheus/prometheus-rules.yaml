@@ -1,0 +1,67 @@
+# PrometheusRule for the Prometheus Operator (kube-prometheus-stack).
+# Install alongside the Helm release once kube-prometheus-stack + its CRDs
+# are present in-cluster:
+#   kubectl apply -f monitoring/prometheus/prometheus-rules.yaml -n monitoring
+#
+# Metric names (vllm:num_requests_running, vllm:num_requests_waiting,
+# vllm:time_to_first_token_seconds, vllm:time_per_output_token_seconds,
+# vllm:e2e_request_latency_seconds, vllm:gpu_cache_usage_perc) are vLLM's
+# built-in Prometheus metrics, exposed on /metrics by the OpenAI-compatible
+# server started by this chart.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vllm-inference-alerts
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: vllm-inference.rules
+      rules:
+        - alert: VLLMHighQueueDepth
+          expr: sum(vllm:num_requests_waiting) by (job) > 20
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "vLLM request queue is backing up ({{ $labels.job }})"
+            description: >-
+              More than 20 requests have been waiting in the vLLM scheduler
+              queue for over 2 minutes. KEDA should be scaling out; if replica
+              count is already at max, consider raising maxReplicaCount or GPU
+              quota.
+
+        - alert: VLLMHighTimeToFirstToken
+          expr: histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket[5m])) by (le, job)) > 2
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "vLLM p95 time-to-first-token above 2s ({{ $labels.job }})"
+            description: >-
+              Prefill latency is degrading, usually a sign of GPU contention
+              from too many concurrent requests per replica.
+
+        - alert: VLLMGPUCacheNearlyFull
+          expr: vllm:gpu_cache_usage_perc > 0.95
+          for: 3m
+          labels:
+            severity: critical
+          annotations:
+            summary: "vLLM KV cache utilization above 95% ({{ $labels.job }})"
+            description: >-
+              The GPU KV cache is nearly exhausted; vLLM will start
+              preempting/evicting in-flight requests. Scale out or reduce
+              gpuMemoryUtilization/maxModelLen headroom.
+
+        - alert: VLLMPodNotReady
+          expr: kube_deployment_status_replicas_available{deployment=~".*vllm-inference.*"} < kube_deployment_spec_replicas{deployment=~".*vllm-inference.*"}
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "vLLM deployment has unavailable replicas for 10m"
+            description: >-
+              Likely causes: GPU scheduling failure (insufficient GPU nodes),
+              image pull failure, or model load/OOM crash loop — check pod
+              events and logs.

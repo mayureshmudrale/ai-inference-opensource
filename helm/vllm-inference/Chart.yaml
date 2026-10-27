@@ -1,0 +1,17 @@
+apiVersion: v2
+name: vllm-inference
+description: >
+  Deploys an open-weight causal language model behind vLLM's OpenAI-compatible
+  server on Kubernetes, with GPU-aware scheduling and optional KEDA autoscaling.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - vllm
+  - llm
+  - inference
+  - gpu
+  - keda
+  - kubernetes
+maintainers:
+  - name: Mayuresh Mudrale

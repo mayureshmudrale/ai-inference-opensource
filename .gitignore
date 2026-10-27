@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Load test output
+load-test/results*.json
+
+# Helm
+*.tgz
+charts/*.tgz
+
+# OS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/

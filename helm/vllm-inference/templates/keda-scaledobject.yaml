@@ -1,0 +1,29 @@
+{{- if .Values.autoscaling.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "vllm-inference.fullname" . }}
+  labels:
+    {{- include "vllm-inference.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ include "vllm-inference.fullname" . }}
+  minReplicaCount: {{ .Values.autoscaling.minReplicaCount }}
+  maxReplicaCount: {{ .Values.autoscaling.maxReplicaCount }}
+  pollingInterval: {{ .Values.autoscaling.pollingInterval }}
+  cooldownPeriod: {{ .Values.autoscaling.cooldownPeriod }}
+  triggers:
+    - type: prometheus
+      metricType: AverageValue
+      metadata:
+        serverAddress: {{ .Values.autoscaling.prometheusAddress | quote }}
+        # Sum of in-flight (running) and queued (waiting) requests across all
+        # pods behind this Service. With metricType=AverageValue, KEDA/HPA
+        # divides this by the threshold to derive desired replica count, so
+        # the threshold below is interpreted as "requests per replica".
+        query: >-
+          sum(vllm:num_requests_running{job="{{ include "vllm-inference.fullname" . }}"})
+          +
+          sum(vllm:num_requests_waiting{job="{{ include "vllm-inference.fullname" . }}"})
+        threshold: {{ .Values.autoscaling.requestsPerReplicaThreshold | quote }}
+{{- end }}
